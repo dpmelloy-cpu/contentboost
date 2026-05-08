@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: contentboost
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: BREVO_SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: BREVO_SMTP_PORT
+        value: "587"
+      - key: BREVO_SMTP_USER
+        sync: false
+      - key: BREVO_SMTP_PASS
+        sync: false
+      - key: FROM_NAME
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_STARTER_PRICE_ID
+        sync: false
+      - key: STRIPE_GROWTH_PRICE_ID
+        sync: false
+      - key: STRIPE_PRO_PRICE_ID
+        sync: false
+      - key: AUTO_SCAN_CITIES
+        value: Brisbane,Sydney,Melbourne,Perth,Adelaide
+      - key: AUTO_SCAN_NICHES
+        value: plumber,electrician,dentist,accountant,landscaper
+      - key: DAILY_EMAIL_LIMIT
+        value: "50"
