@@ -1,0 +1,61 @@
+const axios = require('axios');
+
+const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+async function callGemini(prompt, maxTokens = 1000) {
+  const response = await axios.post(
+    `${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`,
+    {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 }
+    },
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  const text = response.data.candidates[0].content.parts[0].text;
+  return text.replace(/```json|```/g, '').trim();
+}
+
+async function generateProspects(city, niche, count = 5) {
+  const prompt = `Generate ${count} realistic local ${niche} businesses in ${city}, Australia with weak SEO and no blog content.
+Return ONLY a JSON array, no markdown, no explanation.
+Each object: name, suburb, phone (Australian 04xx mobile), email (realistic), seoScore (integer 10-38), issue (one sentence SEO weakness).`;
+  const text = await callGemini(prompt, 1200);
+  return JSON.parse(text);
+}
+
+async function writeColdEmail(prospect, senderName) {
+  const prompt = `Write a short genuine cold email to the owner of "${prospect.name}", a ${prospect.niche || 'local business'} in ${prospect.suburb}, Australia.
+You are ${senderName} from ContentBoost — monthly SEO blog content service.
+Their SEO issue: ${prospect.issue}
+Max 110 words. Conversational, not salesy. Mention a free sample post. Service from $497/month.
+Sign as: ${senderName} | ContentBoost
+Return ONLY JSON: {"subject":"...","body":"..."}`;
+  const text = await callGemini(prompt, 600);
+  return JSON.parse(text);
+}
+
+async function writeFollowUp(prospect, senderName) {
+  const prompt = `Write a very short follow-up cold email to "${prospect.name}" in ${prospect.suburb}, Australia. They didn't reply to a previous email about monthly SEO blog content.
+Offer a completely free sample blog post, no obligation. Under 70 words. Casual.
+Sign as: ${senderName} | ContentBoost
+Return ONLY JSON: {"subject":"...","body":"..."}`;
+  const text = await callGemini(prompt, 400);
+  return JSON.parse(text);
+}
+
+async function writeReply(prospect, replyText, scenario, senderName) {
+  const scenarios = {
+    interested: 'They replied saying they are interested. Goal: get them to sign up. Mention Growth plan at $797/month.',
+    pricing: 'They are asking about pricing. Explain: Starter $497/mo (2 posts), Growth $797/mo (4 posts), Pro $1497/mo (8 posts). Recommend Growth.',
+    objection_time: 'They said they are too busy. Reframe: they do nothing, you handle everything.',
+    objection_money: 'They think it is too expensive. Reframe value: one new customer pays for months. Mention Starter at $497.',
+    objection_diy: 'They said they write their own content. Ask: is it ranking? Offer a free sample post to compare.',
+    sample: 'They want to see a sample. Tell them you will write a FREE custom post for their business. Ask for their preferred topic.',
+    not_interested: 'They said not interested. Be gracious and brief. Leave the door open.',
+    referral: 'They referred someone else. Thank them genuinely. Mention referrer gets a free month if their referral signs up.',
+    closing: 'They are ready to sign up. Confirm their plan, tell them you will send a Stripe payment link, first post within 5 business days.'
+  };
+  const prompt = `Write a reply email to the owner of "${prospect.name || 'a local business'}" in ${prospect.suburb || 'Australia'}.
+Scenario: ${scenarios[scenario] || scenarios.interested}
+${replyText ? `Their message: "${replyText}"
