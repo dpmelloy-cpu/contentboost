@@ -12,16 +12,16 @@ async function runProspectFinder() {
   for (const city of cities) {
     for (const niche of niches) {
       try {
-        const prospects = await ai.generateProspects(city, niche, 3);
+        const prospects = await ai.generateProspects(city, niche, 5);
         for (const p of prospects) {
           p.city = city; p.niche = niche;
           db.addProspect(p);
         }
         console.log(`Found ${prospects.length} ${niche}s in ${city}`);
-        await sleep(2000);
+        await sleep(3000);
       } catch (e) {
         console.error(`Finder error (${niche}/${city}):`, e.message);
-        db.addLog(`Prospect finder error for ${niche} in ${city}: ${e.message}`, 'error');
+        db.addLog(`Finder error ${niche}/${city}: ${e.message}`, 'error');
       }
     }
   }
@@ -48,7 +48,7 @@ async function runEmailOutreach() {
       db.addLog(`Email failed for ${prospect.name}: ${e.message}`, 'error');
     }
   }
-  db.addLog(`Outreach run: ${uncontacted.length} emails sent`, 'info');
+  db.addLog('Outreach run complete', 'info');
 }
 
 async function runFollowUps() {
@@ -88,7 +88,7 @@ async function runMonthlyContentGeneration() {
       }
       const reportBody = await ai.writeMonthlyReport(client, generatedPosts);
       await email.sendMonthlyReport({ to: client.email, toName: client.name, body: reportBody });
-      db.addLog(`Monthly content delivered to ${client.name} — ${postsPerMonth} posts`, 'success');
+      db.addLog(`Monthly content delivered to ${client.name}`, 'success');
     } catch (e) {
       console.error(`Content error (${client.name}):`, e.message);
       db.addLog(`Content failed for ${client.name}: ${e.message}`, 'error');
@@ -98,21 +98,36 @@ async function runMonthlyContentGeneration() {
 
 function startScheduler() {
   console.log('Starting ContentBoost scheduler...');
-  cron.schedule('0 */2 * * *', () => {
+
+  // Every 30 minutes 24/7 — find new prospects constantly
+  cron.schedule('*/30 * * * *', () => {
     runProspectFinder().catch(e => console.error('Finder failed:', e));
   }, { timezone: 'Australia/Brisbane' });
-  cron.schedule('*/30 8-18 * * 1-6', () => {
+
+  // Every 20 minutes 7am-8pm 7 days — send emails all day
+  cron.schedule('*/20 7-20 * * *', () => {
     runEmailOutreach().catch(e => console.error('Outreach failed:', e));
   }, { timezone: 'Australia/Brisbane' });
-  cron.schedule('0 */3 * * 1-6', () => {
+
+  // Every 2 hours — follow-ups
+  cron.schedule('0 */2 * * *', () => {
     runFollowUps().catch(e => console.error('Follow-up failed:', e));
   }, { timezone: 'Australia/Brisbane' });
+
+  // 1st of month 7am — monthly content for all clients
   cron.schedule('0 7 1 * *', () => {
     runMonthlyContentGeneration().catch(e => console.error('Content failed:', e));
   }, { timezone: 'Australia/Brisbane' });
+
+  // Run immediately on startup
   setTimeout(() => runProspectFinder().catch(console.error), 5000);
   setTimeout(() => runEmailOutreach().catch(console.error), 35000);
-  console.log('Scheduler active — finding prospects and sending emails automatically');
+
+  console.log('Scheduler active:');
+  console.log('  Every 30min 24/7     -> Find new prospects');
+  console.log('  Every 20min 7am-8pm  -> Send cold emails');
+  console.log('  Every 2 hours        -> Send follow-ups');
+  console.log('  1st of month 7am     -> Deliver monthly content');
 }
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
