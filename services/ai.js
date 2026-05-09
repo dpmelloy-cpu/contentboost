@@ -3,12 +3,12 @@ const axios = require('axios');
 const GEMINI_MODEL = 'gemini-1.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-async function callGemini(prompt, maxTokens = 1000) {
+async function callGemini(prompt, maxTokens) {
   const response = await axios.post(
     `${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`,
     {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 }
+      generationConfig: { maxOutputTokens: maxTokens || 1000, temperature: 0.7 }
     },
     { headers: { 'Content-Type': 'application/json' } }
   );
@@ -16,30 +16,20 @@ async function callGemini(prompt, maxTokens = 1000) {
   return text.replace(/```json|```/g, '').trim();
 }
 
-async function generateProspects(city, niche, count = 5) {
-  const prompt = `Generate ${count} realistic local ${niche} businesses in ${city}, Australia with weak SEO and no blog content.
-Return ONLY a JSON array, no markdown, no explanation.
-Each object: name, suburb, phone (Australian 04xx mobile), email (realistic), seoScore (integer 10-38), issue (one sentence SEO weakness).`;
+async function generateProspects(city, niche, count) {
+  const prompt = `Generate ${count || 5} realistic local ${niche} businesses in ${city}, Australia with weak SEO and no blog content. Return ONLY a JSON array, no markdown. Each object: name, suburb, phone (Australian 04xx mobile), email (realistic), seoScore (integer 10-38), issue (one sentence SEO weakness).`;
   const text = await callGemini(prompt, 1200);
   return JSON.parse(text);
 }
 
 async function writeColdEmail(prospect, senderName) {
-  const prompt = `Write a short genuine cold email to the owner of "${prospect.name}", a ${prospect.niche || 'local business'} in ${prospect.suburb}, Australia.
-You are ${senderName} from ContentBoost — monthly SEO blog content service.
-Their SEO issue: ${prospect.issue}
-Max 110 words. Conversational, not salesy. Mention a free sample post. Service from $497/month.
-Sign as: ${senderName} | ContentBoost
-Return ONLY JSON: {"subject":"...","body":"..."}`;
+  const prompt = `Write a short genuine cold email to the owner of "${prospect.name}", a ${prospect.niche || 'local business'} in ${prospect.suburb}, Australia. You are ${senderName} from ContentBoost, a monthly SEO blog content service. Their SEO issue: ${prospect.issue}. Max 110 words. Conversational, not salesy. Mention a free sample post. Service from $497/month. Sign as: ${senderName} | ContentBoost. Return ONLY JSON: {"subject":"...","body":"..."}`;
   const text = await callGemini(prompt, 600);
   return JSON.parse(text);
 }
 
 async function writeFollowUp(prospect, senderName) {
-  const prompt = `Write a very short follow-up cold email to "${prospect.name}" in ${prospect.suburb}, Australia. They didn't reply to a previous email about monthly SEO blog content.
-Offer a completely free sample blog post, no obligation. Under 70 words. Casual.
-Sign as: ${senderName} | ContentBoost
-Return ONLY JSON: {"subject":"...","body":"..."}`;
+  const prompt = `Write a very short follow-up cold email to "${prospect.name}" in ${prospect.suburb}, Australia. They did not reply to a previous email about monthly SEO blog content. Offer a completely free sample blog post, no obligation. Under 70 words. Casual. Sign as: ${senderName} | ContentBoost. Return ONLY JSON: {"subject":"...","body":"..."}`;
   const text = await callGemini(prompt, 400);
   return JSON.parse(text);
 }
@@ -53,9 +43,22 @@ async function writeReply(prospect, replyText, scenario, senderName) {
     objection_diy: 'They said they write their own content. Ask: is it ranking? Offer a free sample post to compare.',
     sample: 'They want to see a sample. Tell them you will write a FREE custom post for their business. Ask for their preferred topic.',
     not_interested: 'They said not interested. Be gracious and brief. Leave the door open.',
-    referral: 'They referred someone else. Thank them genuinely. Mention referrer gets a free month if their referral signs up.',
+    referral: 'They referred someone else. Thank them. Mention referrer gets a free month if their referral signs up.',
     closing: 'They are ready to sign up. Confirm their plan, tell them you will send a Stripe payment link, first post within 5 business days.'
   };
-  const prompt = `Write a reply email to the owner of "${prospect.name || 'a local business'}" in ${prospect.suburb || 'Australia'}.
-Scenario: ${scenarios[scenario] || scenarios.interested}
-${replyText ? `Their message: "${replyText}"
+  const prompt = `Write a reply email to the owner of "${prospect.name || 'a local business'}" in ${prospect.suburb || 'Australia'}. Scenario: ${scenarios[scenario] || scenarios.interested}. ${replyText ? `Their message: "${replyText}"` : ''} Warm genuine tone. Sign as: ${senderName} | ContentBoost. Write only the email body.`;
+  return await callGemini(prompt, 500);
+}
+
+async function writeBlogPost(client) {
+  const prompt = `Write a 500-word SEO blog post for "${client.name}", a ${client.niche || 'local business'} in ${client.suburb || client.city}, Australia. Target local Google search keywords. Natural helpful tone. Strong intro, 2-3 sections, clear call to action. Return ONLY JSON (no markdown): {"title":"...","metaDescription":"...","body":"...","keywords":["...","...","...","..."]}`;
+  const text = await callGemini(prompt, 1500);
+  return JSON.parse(text);
+}
+
+async function writeMonthlyReport(client, posts) {
+  const prompt = `Write a short friendly monthly SEO report email for a client. Client: ${client.name}, ${client.suburb}. Posts published: ${posts.length}. Titles: ${posts.map(p => p.title).join(', ')}. Cover what was published, why it helps their SEO, what to expect next month. Under 150 words. Sign as: ${process.env.FROM_NAME || 'Alex'} | ContentBoost`;
+  return await callGemini(prompt, 400);
+}
+
+module.exports = { generateProspects, writeColdEmail, writeFollowUp, writeReply, writeBlogPost, writeMonthlyReport };
