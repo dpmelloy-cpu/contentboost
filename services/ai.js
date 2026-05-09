@@ -4,7 +4,7 @@ async function callClaude(prompt, maxTokens) {
   const response = await axios.post(
     'https://api.anthropic.com/v1/messages',
     {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5',
       max_tokens: maxTokens || 1000,
       messages: [{ role: 'user', content: prompt }]
     },
@@ -12,7 +12,8 @@ async function callClaude(prompt, maxTokens) {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'messages-2023-12-15'
       }
     }
   );
