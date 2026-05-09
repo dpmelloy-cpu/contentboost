@@ -101,4 +101,3 @@ ${postSections}
 Questions? Just reply to this email.
 ${process.env.FROM_NAME || 'Alex'} | ContentBoost`;
 }
-module.exports = { generateProspects, writeColdEmail, writeFollowUp, writeReply, writeBlogPost, writeMonthlyReport };
