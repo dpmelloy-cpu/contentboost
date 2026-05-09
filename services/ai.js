@@ -4,7 +4,7 @@ async function callClaude(prompt, maxTokens) {
   const response = await axios.post(
     'https://api.anthropic.com/v1/messages',
     {
-      model: 'claude-opus-4-5',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: maxTokens || 1000,
       messages: [{ role: 'user', content: prompt }]
     },
@@ -12,8 +12,7 @@ async function callClaude(prompt, maxTokens) {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'messages-2023-12-15'
+        'anthropic-version': '2023-06-01'
       }
     }
   );
@@ -73,7 +72,7 @@ POST ${i + 1} OF ${posts.length} — READY TO PUBLISH
 TITLE:
 ${p.title}
 
-META DESCRIPTION (paste this into your SEO settings):
+META DESCRIPTION (paste into your SEO settings):
 ${p.metaDescription}
 
 KEYWORDS (for your SEO plugin):
@@ -92,13 +91,14 @@ ${p.body}
 YOUR BLOG POSTS THIS MONTH
 ===========================
 
-Simply copy and paste each post below into your website. If you use WordPress, Squarespace, or Wix — just create a new blog post, paste the content in, and hit publish. It takes about 2 minutes per post.
+Copy and paste each post into your website. If you use WordPress, Squarespace, or Wix — create a new blog post, paste the content in, and hit publish. Takes about 2 minutes per post.
 
-If you need any help publishing, just reply to this email and we'll walk you through it.
+Need help publishing? Just reply to this email.
 
 ${postSections}
 
 ---
-Questions? Just reply to this email.
 ${process.env.FROM_NAME || 'Alex'} | ContentBoost`;
 }
+
+module.exports = { generateProspects, writeColdEmail, writeFollowUp, writeReply, writeBlogPost, writeMonthlyReport };
