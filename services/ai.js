@@ -62,7 +62,43 @@ async function writeBlogPost(client) {
 
 async function writeMonthlyReport(client, posts) {
   const prompt = `Write a short friendly monthly SEO report email for a client. Client: ${client.name}, ${client.suburb}. Posts published: ${posts.length}. Titles: ${posts.map(p => p.title).join(', ')}. Cover what was published, why it helps their SEO, what to expect next month. Under 150 words. Sign as: ${process.env.FROM_NAME || 'Alex'} | ContentBoost`;
-  return await callClaude(prompt, 400);
-}
+  const intro = await callClaude(prompt, 400);
 
+  const postSections = posts.map((p, i) => `
+==========================================
+POST ${i + 1} OF ${posts.length} — READY TO PUBLISH
+==========================================
+
+TITLE:
+${p.title}
+
+META DESCRIPTION (paste this into your SEO settings):
+${p.metaDescription}
+
+KEYWORDS (for your SEO plugin):
+${(p.keywords || []).join(', ')}
+
+FULL POST (copy and paste into your website):
+${p.body}
+
+==========================================
+`).join('\n');
+
+  return `${intro}
+
+---
+
+YOUR BLOG POSTS THIS MONTH
+===========================
+
+Simply copy and paste each post below into your website. If you use WordPress, Squarespace, or Wix — just create a new blog post, paste the content in, and hit publish. It takes about 2 minutes per post.
+
+If you need any help publishing, just reply to this email and we'll walk you through it.
+
+${postSections}
+
+---
+Questions? Just reply to this email.
+${process.env.FROM_NAME || 'Alex'} | ContentBoost`;
+}
 module.exports = { generateProspects, writeColdEmail, writeFollowUp, writeReply, writeBlogPost, writeMonthlyReport };
