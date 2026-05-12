@@ -136,12 +136,22 @@ router.get('/clients', (req, res) => {
   res.json(data.clients);
 });
 
-router.post('/clients', (req, res) => {
+router.post('/clients', async (req, res) => {
   const { name, suburb, niche, plan, email: clientEmail } = req.body;
   if (!name || !plan) return res.status(400).json({ error: 'name and plan required' });
   const plans = { starter: 497, growth: 797, pro: 1497 };
-  const client = db.addClient({ name, suburb, niche, plan, planLabel: plan.charAt(0).toUpperCase() + plan.slice(1), email: clientEmail, monthlyRevenue: plans[plan] || 497 });
-  db.addLog(`New client added: ${name} — ${plan} ($${plans[plan]}/mo)`, 'success');
+  const client = await db.addClient({
+    name, suburb, niche, plan,
+    planLabel: plan.charAt(0).toUpperCase() + plan.slice(1),
+    email: clientEmail,
+    monthlyRevenue: plans[plan] || 497
+  });
+  await db.addLog(`New client: ${name} — ${plan} ($${plans[plan]}/mo)`, 'success');
+
+  // Deliver first content package immediately — don't make them wait
+  const { deliverContentForClient } = require('../jobs/scheduler');
+  deliverContentForClient(client).catch(e => console.error('Initial delivery error:', e));
+
   res.json(client);
 });
 
