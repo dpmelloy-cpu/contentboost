@@ -21,7 +21,8 @@ async function initDB() {
       name TEXT, email TEXT, suburb TEXT, city TEXT, niche TEXT,
       plan TEXT, plan_label TEXT, monthly_revenue INTEGER,
       stripe_customer_id TEXT, stripe_subscription_id TEXT,
-      status TEXT DEFAULT 'active', since TIMESTAMP DEFAULT NOW()
+      status TEXT DEFAULT 'active', since TIMESTAMP DEFAULT NOW(),
+      next_delivery TIMESTAMP DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS emails (
       id BIGSERIAL PRIMARY KEY,
