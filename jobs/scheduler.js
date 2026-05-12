@@ -100,12 +100,12 @@ function startScheduler() {
   console.log('Starting ContentBoost scheduler...');
 
   // Every 30 minutes 24/7 — find new prospects constantly
-  cron.schedule('*/30 * * * *', () => {
+  cron.schedule('*/15 * * * *', () => {
     runProspectFinder().catch(e => console.error('Finder failed:', e));
   }, { timezone: 'Australia/Brisbane' });
 
   // Every 20 minutes 7am-8pm 7 days — send emails all day
-  cron.schedule('*/20 7-20 * * *', () => {
+  cron.schedule('*/10 6-21 * * *', () => {
     runEmailOutreach().catch(e => console.error('Outreach failed:', e));
   }, { timezone: 'Australia/Brisbane' });
 
