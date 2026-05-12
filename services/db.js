@@ -1,150 +1,285 @@
-const fs = require('fs-extra');
-const path = require('path');
+const { Pool } = require('pg');
 
-const DB_PATH = path.join(__dirname, '../data/db.json');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
-const DEFAULT_DB = {
-  prospects: [], clients: [], emails: [], replies: [], posts: [], logs: [],
-  contactedEmails: [],
-  stats: { totalProspectsFound: 0, totalEmailsSent: 0, totalReplies: 0, totalPostsPublished: 0 }
-};
+// Create all tables on startup if they don't exist
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS prospects (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT, email TEXT UNIQUE, suburb TEXT, city TEXT, niche TEXT,
+      phone TEXT, website TEXT, domain TEXT, seo_score INTEGER,
+      issue TEXT, status TEXT DEFAULT 'prospect',
+      emailed_at TIMESTAMP, followed_up BOOLEAN DEFAULT FALSE,
+      followed_up_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS clients (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT, email TEXT, suburb TEXT, city TEXT, niche TEXT,
+      plan TEXT, plan_label TEXT, monthly_revenue INTEGER,
+      stripe_customer_id TEXT, stripe_subscription_id TEXT,
+      status TEXT DEFAULT 'active', since TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS emails (
+      id BIGSERIAL PRIMARY KEY,
+      to_email TEXT, to_name TEXT, subject TEXT,
+      prospect_id BIGINT, message_id TEXT, sent_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS replies (
+      id BIGSERIAL PRIMARY KEY,
+      prospect_id BIGINT, reply_text TEXT, scenario TEXT,
+      response TEXT, received_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS posts (
+      id BIGSERIAL PRIMARY KEY,
+      client_id BIGINT, client TEXT, suburb TEXT,
+      title TEXT, meta_description TEXT, body TEXT,
+      keywords TEXT[], published_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS logs (
+      id BIGSERIAL PRIMARY KEY,
+      message TEXT, type TEXT, timestamp TIMESTAMP DEFAULT NOW()
+    );
+  `);
+  console.log('Database tables ready');
+}
 
-function load() {
+function get() {
+  return {
+    prospects: [], clients: [], emails: [],
+    replies: [], posts: [], logs: [],
+    stats: { totalProspectsFound: 0, totalEmailsSent: 0, totalReplies: 0, totalPostsPublished: 0 }
+  };
+}
+
+async function alreadyContacted(email, businessName) {
   try {
-    fs.ensureDirSync(path.dirname(DB_PATH));
-    if (!fs.existsSync(DB_PATH)) fs.writeJsonSync(DB_PATH, DEFAULT_DB, { spaces: 2 });
-    return fs.readJsonSync(DB_PATH);
-  } catch (e) { return { ...DEFAULT_DB }; }
-}
-
-function save(data) {
-  try {
-    fs.ensureDirSync(path.dirname(DB_PATH));
-    fs.writeJsonSync(DB_PATH, data, { spaces: 2 });
-  } catch (e) { console.error('DB save error:', e.message); }
-}
-
-function get() { return load(); }
-
-// Check if we have already contacted this email or business name
-function alreadyContacted(email, businessName) {
-  const db = load();
-  const emailLower = (email || '').toLowerCase();
-  const nameLower = (businessName || '').toLowerCase();
-  const contactedEmails = db.contactedEmails || [];
-  const existingProspects = db.prospects || [];
-
-  // Check contacted emails list
-  if (contactedEmails.includes(emailLower)) return true;
-
-  // Check existing prospects by email
-  if (existingProspects.some(p => (p.email || '').toLowerCase() === emailLower)) return true;
-
-  // Check existing prospects by business name
-  if (existingProspects.some(p => (p.name || '').toLowerCase() === nameLower)) return true;
-
-  // Check existing clients
-  const clients = db.clients || [];
-  if (clients.some(c => (c.email || '').toLowerCase() === emailLower)) return true;
-
-  return false;
-}
-
-function markContacted(email) {
-  const db = load();
-  if (!db.contactedEmails) db.contactedEmails = [];
-  const emailLower = (email || '').toLowerCase();
-  if (!db.contactedEmails.includes(emailLower)) {
-    db.contactedEmails.push(emailLower);
+    const emailCheck = await pool.query(
+      'SELECT id FROM prospects WHERE LOWER(email) = LOWER($1) LIMIT 1',
+      [email || '']
+    );
+    if (emailCheck.rows.length > 0) return true;
+    const nameCheck = await pool.query(
+      'SELECT id FROM prospects WHERE LOWER(name) = LOWER($1) LIMIT 1',
+      [businessName || '']
+    );
+    if (nameCheck.rows.length > 0) return true;
+    const clientCheck = await pool.query(
+      'SELECT id FROM clients WHERE LOWER(email) = LOWER($1) LIMIT 1',
+      [email || '']
+    );
+    return clientCheck.rows.length > 0;
+  } catch (e) {
+    console.error('alreadyContacted error:', e.message);
+    return false;
   }
-  save(db);
 }
 
-function addProspect(prospect) {
-  const db = load();
-
-  // Never add duplicates
-  if (alreadyContacted(prospect.email, prospect.name)) {
-    console.log(`Skipping duplicate: ${prospect.name} (${prospect.email})`);
+async function addProspect(prospect) {
+  try {
+    const already = await alreadyContacted(prospect.email, prospect.name);
+    if (already) {
+      console.log(`Skipping duplicate: ${prospect.name} (${prospect.email})`);
+      return null;
+    }
+    const result = await pool.query(
+      `INSERT INTO prospects (name, email, suburb, city, niche, phone, website, domain, seo_score, issue, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'prospect') RETURNING *`,
+      [prospect.name, prospect.email, prospect.suburb, prospect.city, prospect.niche,
+       prospect.phone, prospect.website, prospect.domain, prospect.seoScore, prospect.issue]
+    );
+    console.log(`Added prospect: ${prospect.name}`);
+    return result.rows[0];
+  } catch (e) {
+    console.error('addProspect error:', e.message);
     return null;
   }
-
-  prospect.id = Date.now() + Math.random();
-  prospect.createdAt = new Date().toISOString();
-  prospect.status = 'prospect';
-  db.prospects.push(prospect);
-  db.stats.totalProspectsFound++;
-  save(db);
-  return prospect;
 }
 
-function updateProspect(id, updates) {
-  const db = load();
-  const idx = db.prospects.findIndex(p => p.id == id);
-  if (idx !== -1) {
-    db.prospects[idx] = { ...db.prospects[idx], ...updates };
-    save(db);
+async function updateProspect(id, updates) {
+  try {
+    const fields = [];
+    const values = [];
+    let i = 1;
+    if (updates.status) { fields.push(`status=$${i++}`); values.push(updates.status); }
+    if (updates.emailedAt) { fields.push(`emailed_at=$${i++}`); values.push(updates.emailedAt); }
+    if (updates.followedUp !== undefined) { fields.push(`followed_up=$${i++}`); values.push(updates.followedUp); }
+    if (updates.followedUpAt) { fields.push(`followed_up_at=$${i++}`); values.push(updates.followedUpAt); }
+    if (fields.length === 0) return;
+    values.push(id);
+    await pool.query(`UPDATE prospects SET ${fields.join(',')} WHERE id=$${i}`, values);
+  } catch (e) {
+    console.error('updateProspect error:', e.message);
   }
-  return db.prospects[idx];
 }
 
-function addClient(client) {
-  const db = load();
-  client.id = Date.now() + Math.random();
-  client.since = new Date().toISOString();
-  client.status = 'active';
-  db.clients.push(client);
-  save(db);
-  return client;
+async function addClient(client) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO clients (name, email, suburb, city, niche, plan, plan_label, monthly_revenue, stripe_customer_id, stripe_subscription_id, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active') RETURNING *`,
+      [client.name, client.email, client.suburb, client.city, client.niche,
+       client.plan, client.planLabel, client.monthlyRevenue,
+       client.stripeCustomerId, client.stripeSubscriptionId]
+    );
+    return result.rows[0];
+  } catch (e) {
+    console.error('addClient error:', e.message);
+    return null;
+  }
 }
 
-function addEmail(email) {
-  const db = load();
-  email.id = Date.now() + Math.random();
-  email.sentAt = new Date().toISOString();
-  db.emails.push(email);
-  db.stats.totalEmailsSent++;
-
-  // Mark this email address as contacted forever
-  markContacted(email.to);
-
-  save(db);
-  return email;
+async function addEmail(email) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO emails (to_email, to_name, subject, prospect_id, message_id)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [email.to, email.toName, email.subject, email.prospectId, email.messageId]
+    );
+    return result.rows[0];
+  } catch (e) {
+    console.error('addEmail error:', e.message);
+    return null;
+  }
 }
 
-function addReply(reply) {
-  const db = load();
-  reply.id = Date.now() + Math.random();
-  reply.receivedAt = new Date().toISOString();
-  db.replies.push(reply);
-  db.stats.totalReplies++;
-  save(db);
-  return reply;
+async function addReply(reply) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO replies (prospect_id, reply_text, scenario, response)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [reply.prospectId, reply.replyText, reply.scenario, reply.response]
+    );
+    return result.rows[0];
+  } catch (e) {
+    console.error('addReply error:', e.message);
+    return null;
+  }
 }
 
-function addPost(post) {
-  const db = load();
-  post.id = Date.now() + Math.random();
-  post.publishedAt = new Date().toISOString();
-  db.posts.push(post);
-  db.stats.totalPostsPublished++;
-  save(db);
-  return post;
+async function addPost(post) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO posts (client_id, client, suburb, title, meta_description, body, keywords)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [post.clientId, post.client, post.suburb, post.title,
+       post.metaDescription, post.body, post.keywords || []]
+    );
+    return result.rows[0];
+  } catch (e) {
+    console.error('addPost error:', e.message);
+    return null;
+  }
 }
 
-function addLog(message, type) {
-  const db = load();
-  db.logs.unshift({ message, type: type || 'info', timestamp: new Date().toISOString() });
-  if (db.logs.length > 200) db.logs = db.logs.slice(0, 200);
-  save(db);
+async function addLog(message, type) {
+  try {
+    await pool.query(
+      'INSERT INTO logs (message, type) VALUES ($1,$2)',
+      [message, type || 'info']
+    );
+  } catch (e) {
+    console.error('addLog error:', e.message);
+  }
 }
 
-function getMRR() {
-  const db = load();
-  const plans = { starter: 497, growth: 797, pro: 1497 };
-  return db.clients
-    .filter(c => c.status === 'active')
-    .reduce((sum, c) => sum + (plans[c.plan] || 0), 0);
+async function getMRR() {
+  try {
+    const result = await pool.query(
+      `SELECT SUM(monthly_revenue) as mrr FROM clients WHERE status='active'`
+    );
+    return parseInt(result.rows[0].mrr) || 0;
+  } catch (e) {
+    return 0;
+  }
 }
 
-module.exports = { get, addProspect, updateProspect, addClient, addEmail, addReply, addPost, addLog, getMRR, alreadyContacted, markContacted };
+async function getStats() {
+  try {
+    const prospects = await pool.query('SELECT COUNT(*) FROM prospects');
+    const emails = await pool.query('SELECT COUNT(*) FROM emails');
+    const replies = await pool.query('SELECT COUNT(*) FROM replies');
+    const clients = await pool.query(`SELECT COUNT(*) FROM clients WHERE status='active'`);
+    const posts = await pool.query('SELECT COUNT(*) FROM posts');
+    const mrr = await getMRR();
+    return {
+      prospects: parseInt(prospects.rows[0].count),
+      emailsSent: parseInt(emails.rows[0].count),
+      replies: parseInt(replies.rows[0].count),
+      clients: parseInt(clients.rows[0].count),
+      posts: parseInt(posts.rows[0].count),
+      mrr,
+      arr: mrr * 12
+    };
+  } catch (e) {
+    console.error('getStats error:', e.message);
+    return { prospects:0, emailsSent:0, replies:0, clients:0, posts:0, mrr:0, arr:0 };
+  }
+}
+
+async function getProspects() {
+  try {
+    const result = await pool.query('SELECT * FROM prospects ORDER BY created_at DESC LIMIT 500');
+    return result.rows;
+  } catch (e) { return []; }
+}
+
+async function getClients() {
+  try {
+    const result = await pool.query(`SELECT * FROM clients WHERE status='active' ORDER BY since DESC`);
+    return result.rows;
+  } catch (e) { return []; }
+}
+
+async function getUncontactedProspects(limit) {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM prospects WHERE status='prospect' ORDER BY created_at ASC LIMIT $1`,
+      [limit || 15]
+    );
+    return result.rows;
+  } catch (e) { return []; }
+}
+
+async function getProspectsNeedingFollowUp() {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM prospects 
+       WHERE status='emailed' 
+       AND followed_up=FALSE 
+       AND emailed_at < NOW() - INTERVAL '5 days'
+       LIMIT 10`
+    );
+    return result.rows;
+  } catch (e) { return []; }
+}
+
+async function getRecentLogs(limit) {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM logs ORDER BY timestamp DESC LIMIT $1',
+      [limit || 20]
+    );
+    return result.rows;
+  } catch (e) { return []; }
+}
+
+async function getDailyEmailCount() {
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*) FROM emails WHERE sent_at > NOW() - INTERVAL '24 hours'`
+    );
+    return parseInt(result.rows[0].count) || 0;
+  } catch (e) { return 0; }
+}
+
+module.exports = {
+  initDB, get, alreadyContacted, addProspect, updateProspect,
+  addClient, addEmail, addReply, addPost, addLog,
+  getMRR, getStats, getProspects, getClients,
+  getUncontactedProspects, getProspectsNeedingFollowUp,
+  getRecentLogs, getDailyEmailCount
+};
