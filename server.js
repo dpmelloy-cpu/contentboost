@@ -6,6 +6,7 @@ const { startScheduler } = require('./jobs/scheduler');
 const apiRoutes = require('./routes/api');
 const stripeService = require('./services/stripe');
 const db = require('./services/db');
+db.initDB().catch(e => console.error('DB init error:', e.message));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
