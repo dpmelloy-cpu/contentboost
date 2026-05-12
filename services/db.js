@@ -276,10 +276,39 @@ async function getDailyEmailCount() {
   } catch (e) { return 0; }
 }
 
+async function scheduleNextDelivery(clientId) {
+  try {
+    const nextDelivery = new Date();
+    nextDelivery.setMonth(nextDelivery.getMonth() + 1);
+    await pool.query(
+      'UPDATE clients SET next_delivery=$1 WHERE id=$2',
+      [nextDelivery.toISOString(), clientId]
+    );
+  } catch (e) {
+    console.error('scheduleNextDelivery error:', e.message);
+  }
+}
+
+async function getClientsDueForContent() {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM clients 
+       WHERE status='active' 
+       AND (next_delivery IS NULL OR next_delivery <= NOW())
+       ORDER BY since ASC`
+    );
+    return result.rows;
+  } catch (e) {
+    console.error('getClientsDueForContent error:', e.message);
+    return [];
+  }
+}
+
 module.exports = {
   initDB, get, alreadyContacted, addProspect, updateProspect,
   addClient, addEmail, addReply, addPost, addLog,
   getMRR, getStats, getProspects, getClients,
   getUncontactedProspects, getProspectsNeedingFollowUp,
-  getRecentLogs, getDailyEmailCount
+  getRecentLogs, getDailyEmailCount,
+  scheduleNextDelivery, getClientsDueForContent
 };
