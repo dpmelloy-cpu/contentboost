@@ -12,7 +12,7 @@ async function runProspectFinder() {
   for (const city of cities) {
     for (const niche of niches) {
       try {
-        const prospects = await ai.generateProspects(city, niche, 5);
+        const prospects = await ai.generateProspects(city, niche, 10);
         for (const p of prospects) {
           p.city = city; p.niche = niche;
           db.addProspect(p);
