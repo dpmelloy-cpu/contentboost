@@ -169,4 +169,19 @@ router.get('/email/limit', async (req, res) => {
   res.json(limit);
 });
 
+router.post('/test/email', async (req, res) => {
+  try {
+    const result = await email.sendEmail({
+      to: process.env.FROM_EMAIL,
+      toName: 'Test',
+      subject: 'ContentBoost test email',
+      body: 'This is a test email from ContentBoost. If you receive this the system is working.',
+      prospectId: null
+    });
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message, details: e.response?.data || null });
+  }
+});
+
 module.exports = router;
