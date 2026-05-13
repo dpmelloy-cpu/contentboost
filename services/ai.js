@@ -128,7 +128,22 @@ async function generateProspects(city, niche, count) {
 }
 
 async function writeColdEmail(prospect, senderName) {
-  const prompt = `Write a short genuine cold email to the owner of "${prospect.name}", a ${prospect.niche || 'local business'} in ${prospect.suburb}, Australia. You are ${senderName} from ContentBoost, a monthly SEO blog content service. Their SEO issue: ${prospect.issue}. Max 110 words. Conversational, not salesy. Mention a free sample post. Service from $497/month. Sign as: ${senderName} | ContentBoost. Return ONLY JSON: {"subject":"...","body":"..."}`;
+  const prompt = `Write a short genuine cold email to the owner of "${prospect.name}", a ${prospect.niche || 'local business'} in ${prospect.suburb}, Australia. You are ${senderName} from ContentBoost, a monthly SEO blog content service.
+
+IMPORTANT RULES:
+- Do NOT claim they don't have a blog or website — you don't know for certain
+- Do NOT make specific claims about their current SEO you can't verify
+- Instead focus on the OPPORTUNITY — most local businesses could rank higher with better content
+- Keep it under 110 words
+- Conversational, not salesy
+- Mention a free sample post
+- Service from $497/month
+- Sign as: ${senderName} | ContentBoost
+
+Their business context: ${prospect.issue}
+Their location: ${prospect.suburb}
+
+Return ONLY JSON: {"subject":"...","body":"..."}`;
   const text = await callClaude(prompt, 600);
   return JSON.parse(text);
 }
